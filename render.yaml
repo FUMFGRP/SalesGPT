@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: aurasky-bot
+    runtime: python
+    plan: free
+    buildCommand: pip install fastapi uvicorn python-dotenv requests
+    startCommand: python bot_http.py
+    envVars:
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM_EMAIL
+        value: info@aurasky.cloud
