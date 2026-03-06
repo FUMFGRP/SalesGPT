@@ -35,7 +35,6 @@ def load_leads() -> list:
 
 def save_lead(session_id: str, session: dict):
     leads = load_leads()
-    # Find existing lead for this session or create new
     existing = next((l for l in leads if l["session_id"] == session_id), None)
     entry = {
         "session_id": session_id,
@@ -53,6 +52,24 @@ def save_lead(session_id: str, session: dict):
         leads.append(entry)
     with open(LEADS_FILE, "w") as f:
         json.dump(leads, f, indent=2)
+    sync_to_sheets(entry, is_new=existing is None)
+
+def sync_to_sheets(lead: dict, is_new: bool = True):
+    """Append new lead row to Google Sheet via Apps Script webhook."""
+    webhook = os.getenv("GOOGLE_SHEET_WEBHOOK")
+    if not webhook or not is_new:
+        return
+    try:
+        requests.post(webhook, json={
+            "date": lead.get("created_at", "")[:10],
+            "name": lead.get("name") or "",
+            "email": lead.get("email") or "",
+            "phone": lead.get("phone") or "",
+            "interest": lead.get("interest") or "",
+            "messages": str(lead.get("messages", 0)),
+        }, timeout=10)
+    except Exception as e:
+        logger.error(f"Sheets sync error: {e}")
 
 def extract_lead_info(message: str, session: dict):
     """Extract name, email, phone from message and update session."""
