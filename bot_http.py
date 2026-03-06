@@ -7,6 +7,7 @@ import os
 import json
 import logging
 from typing import Dict, Any, List
+from datetime import datetime
 
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -22,6 +23,47 @@ app = FastAPI(title="Aura Sky Cloud Bot")
 
 # Sessions
 sessions: Dict[str, Any] = {}
+
+# Leads file
+LEADS_FILE = "leads.json"
+
+def load_leads() -> list:
+    if os.path.exists(LEADS_FILE):
+        with open(LEADS_FILE, "r") as f:
+            return json.load(f)
+    return []
+
+def save_lead(session_id: str, session: dict):
+    leads = load_leads()
+    # Find existing lead for this session or create new
+    existing = next((l for l in leads if l["session_id"] == session_id), None)
+    entry = {
+        "session_id": session_id,
+        "name": session.get("name"),
+        "email": session.get("email"),
+        "phone": session.get("phone"),
+        "interest": session.get("interest"),
+        "messages": len(session.get("history", [])),
+        "last_seen": datetime.utcnow().isoformat(),
+        "created_at": existing.get("created_at") if existing else datetime.utcnow().isoformat(),
+    }
+    if existing:
+        leads[leads.index(existing)] = entry
+    else:
+        leads.append(entry)
+    with open(LEADS_FILE, "w") as f:
+        json.dump(leads, f, indent=2)
+
+def extract_lead_info(message: str, session: dict):
+    """Extract name, email, phone from message and update session."""
+    import re
+    if re.search(r"[\w.+-]+@[\w-]+\.\w+", message):
+        session["email"] = re.search(r"[\w.+-]+@[\w-]+\.\w+", message).group()
+    if re.search(r"\+?[\d\s\-()]{7,15}", message):
+        session["phone"] = re.search(r"\+?[\d\s\-()]{7,15}", message).group().strip()
+    for service in ["coaching", "retainer", "project", "essential", "professional"]:
+        if service in message.lower():
+            session["interest"] = service
 
 # Config
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
@@ -220,12 +262,18 @@ async def chat_msg(request: Request):
     
     if sid not in sessions:
         sessions[sid] = {"history": []}
-    
+
     sessions[sid]["history"].append({"role": "user", "content": msg})
+    extract_lead_info(msg, sessions[sid])
     reply = get_ai_response(msg, sessions[sid]["history"])
     sessions[sid]["history"].append({"role": "assistant", "content": reply})
-    
+    save_lead(sid, sessions[sid])
+
     return {"response": reply}
+
+@app.get("/leads")
+def get_leads():
+    return {"leads": load_leads(), "total": len(load_leads())}
 
 @app.post("/email")
 async def send_email_endpoint(request: Request):
