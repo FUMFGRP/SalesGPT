@@ -81,6 +81,9 @@ def extract_lead_info(message: str, session: dict):
     for service in ["coaching", "retainer", "project", "essential", "professional"]:
         if service in message.lower():
             session["interest"] = service
+    name_match = re.search(r"(?:my name is|i am|i'm|this is)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)", message, re.IGNORECASE)
+    if name_match and not session.get("name"):
+        session["name"] = name_match.group(1)
 
 # Config
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
