@@ -21,6 +21,15 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Aura Sky Cloud Bot")
 
+@app.on_event("startup")
+def startup():
+    global calcom_booking_url
+    calcom_booking_url = fetch_calcom_booking_url()
+    if calcom_booking_url:
+        logger.info(f"Cal.com booking URL: {calcom_booking_url}")
+    else:
+        logger.warning("Cal.com booking URL not fetched — check CALCOM_API_KEY")
+
 # Sessions
 sessions: Dict[str, Any] = {}
 
@@ -89,7 +98,39 @@ def extract_lead_info(message: str, session: dict):
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
-SYSTEM_PROMPT = """You are Aura, an AI Solutions Consultant for Aura Sky Cloud.
+CALCOM_API_KEY = os.getenv("CALCOM_API_KEY")
+CALCOM_API_URL = "https://api.cal.com/v1"
+calcom_booking_url: str = ""  # populated at startup
+
+def fetch_calcom_booking_url() -> str:
+    """Fetch the first active event type and return its public booking URL."""
+    if not CALCOM_API_KEY:
+        return ""
+    try:
+        # Get profile (username)
+        me = requests.get(f"{CALCOM_API_URL}/me?apiKey={CALCOM_API_KEY}", timeout=10)
+        if me.status_code != 200:
+            logger.error(f"Cal.com /me error: {me.status_code} {me.text[:100]}")
+            return ""
+        username = me.json().get("user", {}).get("username", "")
+
+        # Get event types
+        et = requests.get(f"{CALCOM_API_URL}/event-types?apiKey={CALCOM_API_KEY}", timeout=10)
+        if et.status_code != 200:
+            logger.error(f"Cal.com /event-types error: {et.status_code} {et.text[:100]}")
+            return ""
+        event_types = et.json().get("event_types", [])
+        if not event_types:
+            return f"https://cal.com/{username}"
+        slug = event_types[0].get("slug", "")
+        return f"https://cal.com/{username}/{slug}"
+    except Exception as e:
+        logger.error(f"Cal.com fetch error: {e}")
+        return ""
+
+def build_system_prompt() -> str:
+    booking_line = f"\nBOOKING: When the customer is ready to book, share this link: {calcom_booking_url}" if calcom_booking_url else ""
+    return f"""You are Aura, an AI Solutions Consultant for Aura Sky Cloud.
 
 CORE PROMISE: "If dealing with IT systems frustrates you, we bring clarity to that conversation."
 
@@ -100,8 +141,8 @@ SERVICES:
 - Full Project: €5,000 (Discovery + Build)
 
 What clients get: One AI-Team (Product Manager + Workflows + Specialists)
-
-Be warm, empathetic, and professional."""
+{booking_line}
+Be warm, empathetic, and professional. When a customer seems ready to move forward or asks how to book, share the booking link."""
 
 def get_ai_response(message: str, history: List[dict]) -> str:
     """Call OpenRouter API directly via HTTP"""
@@ -109,7 +150,7 @@ def get_ai_response(message: str, history: List[dict]) -> str:
         return "⚠️ Bot not configured. Add OPENROUTER_API_KEY to environment variables."
     
     try:
-        messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+        messages = [{"role": "system", "content": build_system_prompt()}]
         messages.extend(history[-10:])
         messages.append({"role": "user", "content": message})
         
@@ -264,10 +305,11 @@ WEB_CHAT_HTML = '''<!DOCTYPE html>
 @app.get("/")
 def root():
     return {
-        "status": "online", 
+        "status": "online",
         "configured": bool(OPENROUTER_API_KEY),
         "service": "Aura Sky Cloud Bot",
-        "version": "HTTP Edition"
+        "version": "HTTP Edition",
+        "calcom": calcom_booking_url or "not configured"
     }
 
 @app.get("/chat", response_class=HTMLResponse)
@@ -312,6 +354,7 @@ if __name__ == "__main__":
     print("=" * 50)
     print(f"OpenRouter: {'✅' if OPENROUTER_API_KEY else '❌'}")
     print(f"Resend: {'✅' if os.getenv('RESEND_API_KEY') else '❌'}")
+    print(f"Cal.com: {'✅' if CALCOM_API_KEY else '❌'}")
     print("=" * 50)
     print("🌐 Web Chat: http://localhost:8000/chat")
     print("=" * 50)
