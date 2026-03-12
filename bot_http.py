@@ -423,7 +423,7 @@ if __name__ == "__main__":
     print("=" * 50)
     print(f"DeepSeek: {'✅' if DEEPSEEK_API_KEY else '❌'} (model: {DEEPSEEK_MODEL})")
     print(f"Resend: {'✅' if os.getenv('RESEND_API_KEY') else '❌'}")
-    print(f"Cal.com: {'✅' if CALCOM_API_KEY else '❌'}")
+    print(f"Cal.com: {'✅ ' + calcom_booking_url if calcom_booking_url else '❌ booking URL not set'}")
     print(f"Retell: {'✅' if RETELL_API_KEY and RETELL_AGENT_ID else '❌ (need RETELL_API_KEY + RETELL_AGENT_ID + RETELL_FROM_NUMBER)'}")
     print("=" * 50)
     print("🌐 Web Chat: http://localhost:8000/chat")
