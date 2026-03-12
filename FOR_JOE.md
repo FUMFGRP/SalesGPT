@@ -13,7 +13,7 @@ This is an AI sales bot that runs 24/7 and handles the full pipeline from first 
 | Google Sheets sync | Live | Every new lead appears in the sheet automatically |
 | Email (Resend) | Live | DNS verified — emails send from info@aurasky.cloud |
 | Cal.com booking | Live | Booking link auto-fetched and shared in chat |
-| Retell AI (voice calls) | Connected | Triggers outbound AI call when a phone number is captured |
+| Retell AI (voice calls) | Pending verification | Once Retell account is verified, calls US numbers automatically when a phone is captured |
 
 **Live chat URL:** your Render service URL + `/chat`
 **Leads sheet:** https://docs.google.com/spreadsheets/d/1Q7_EDZnGiUJzwpBPK8c1S3OdDefO-ywaXOG3o4woPUw
@@ -54,7 +54,7 @@ This is an AI sales bot that runs 24/7 and handles the full pipeline from first 
 - **Keys needed:** `RETELL_API_KEY`, `RETELL_AGENT_ID`, `RETELL_FROM_NUMBER`
 - **Webhook:** `POST /retell/webhook` — receives call status events (call started, ended, etc.)
 - **Cost:** Pay-per-minute (check retellai.com for current rates)
-- **Status:** Code integrated. Retell agent + phone number still need to be configured in the Retell dashboard.
+- **Status:** Code integrated and env vars set. Calls will fire to US numbers once the Retell account is verified. International calling requires further verification on the Retell dashboard.
 
 ---
 
