@@ -408,6 +408,47 @@ async def send_email_endpoint(request: Request):
     )
     return {"success": success}
 
+@app.post("/inbound-email")
+async def inbound_email(request: Request):
+    """Receive inbound emails from Resend, process through Aura, reply to sender."""
+    import re
+    data = await request.json()
+
+    raw_from = data.get("from", "")
+    # Parse "Name <email>" or plain "email"
+    match = re.search(r"[\w.+-]+@[\w-]+\.\w+", raw_from)
+    sender_email = match.group() if match else ""
+    if not sender_email:
+        logger.warning(f"Inbound email: could not parse sender from '{raw_from}'")
+        return {"ok": False, "reason": "no sender email"}
+
+    subject = data.get("subject", "")
+    body = (data.get("text") or data.get("html") or "").strip()
+    if not body:
+        return {"ok": False, "reason": "empty body"}
+
+    logger.info(f"Inbound email from {sender_email}: {subject[:60]}")
+
+    # Use email address as session ID so history persists across replies
+    sid = f"email-{sender_email}"
+    if sid not in sessions:
+        sessions[sid] = {"history": [], "email": sender_email}
+
+    sessions[sid]["history"].append({"role": "user", "content": body})
+    extract_lead_info(body, sessions[sid])
+    # Ensure email is always set from the sender address
+    sessions[sid]["email"] = sender_email
+
+    reply = get_ai_response(body, sessions[sid]["history"])
+    sessions[sid]["history"].append({"role": "assistant", "content": reply})
+    save_lead(sid, sessions[sid])
+
+    # Reply to sender
+    reply_subject = f"Re: {subject}" if subject and not subject.lower().startswith("re:") else subject or "Aura Sky Cloud"
+    send_email(to=sender_email, subject=reply_subject, body=reply)
+
+    return {"ok": True}
+
 @app.post("/retell/webhook")
 async def retell_webhook(request: Request):
     """Receive call event updates from Retell (call_started, call_ended, etc.)."""
