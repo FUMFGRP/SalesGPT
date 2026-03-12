@@ -69,6 +69,17 @@ def save_lead(session_id: str, session: dict):
     if phone and not had_phone_before:
         trigger_retell_call(phone, lead_name=session.get("name", ""))
 
+    # Send booking link email the first time an email is captured
+    email = session.get("email")
+    had_email_before = existing and existing.get("email")
+    if email and not had_email_before and calcom_booking_url:
+        name = session.get("name") or "there"
+        send_email(
+            to=email,
+            subject="Your booking link — Aura Sky Cloud",
+            body=f"Hi {name},\n\nThanks for chatting with us! Here's your link to book a call with the Aura Sky Cloud team:\n\n{calcom_booking_url}\n\nLooking forward to speaking with you.\n\nAura\nAura Sky Cloud"
+        )
+
 def sync_to_sheets(lead: dict, is_new: bool = True):
     """Append new lead row to Google Sheet via Apps Script webhook."""
     webhook = os.getenv("GOOGLE_SHEET_WEBHOOK")
