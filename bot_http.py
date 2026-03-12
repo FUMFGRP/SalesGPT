@@ -128,6 +128,7 @@ def fetch_calcom_booking_url() -> str:
     """Return booking URL. Uses CALCOM_BOOKING_URL env var directly if set, otherwise fetches via API."""
     # Direct override — most reliable
     direct = os.getenv("CALCOM_BOOKING_URL", "").strip()
+    logger.info(f"Cal.com CALCOM_BOOKING_URL env value: '{direct}'")
     if direct:
         logger.info(f"Cal.com booking URL from env: {direct}")
         return direct
