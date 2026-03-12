@@ -258,7 +258,6 @@ def send_email(to: str, subject: str, body: str) -> bool:
             },
             json={
                 "from": "Aura Sky Cloud <info@aurasky.cloud>",
-                "reply_to": "aura@mail.aurasky.cloud",
                 "to": to,
                 "subject": subject,
                 "text": body
