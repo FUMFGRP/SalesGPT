@@ -7,7 +7,7 @@ A visitor opens the chat, talks to **Aura** (the AI consultant), shares their de
 
 ## Stack
 - **Language:** Python 3.11 + FastAPI
-- **AI:** OpenRouter → GPT-4 (`openai/gpt-4`)
+- **AI:** DeepSeek (`deepseek-chat`)
 - **Hosting:** Render (auto-deploys from `github.com/FUMFGRP/SalesGPT`, branch `main`)
 - **Email:** Resend from `info@aurasky.cloud`
 - **Leads DB:** `leads.json` + Google Sheets (via Apps Script webhook)
@@ -23,18 +23,22 @@ A visitor opens the chat, talks to **Aura** (the AI consultant), shares their de
 
 ## Environment variables required
 ```
-OPENROUTER_API_KEY
+DEEPSEEK_API_KEY
 RESEND_API_KEY
 RESEND_FROM_EMAIL=info@aurasky.cloud
 GOOGLE_SHEET_WEBHOOK
 CALCOM_API_KEY
+RETELL_API_KEY
+RETELL_AGENT_ID
+RETELL_FROM_NUMBER
 ```
 
 ## How it works
-1. Customer chats → Aura responds via GPT-4
+1. Customer chats → Aura responds via DeepSeek
 2. Bot extracts name, email, phone, interest from conversation
 3. Lead saved to `leads.json` and synced to Google Sheets
 4. When ready to book, Aura shares the Cal.com link (fetched dynamically at startup)
 
-## Still to connect
-- **Twilio** — auto call/SMS when phone number is captured (`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER`)
+## Voice calls (Retell AI)
+When a lead's phone number is captured for the first time, the bot auto-triggers an outbound AI call via Retell.
+Webhook for call events: `POST /retell/webhook` — point this to your deployed URL in the Retell dashboard.

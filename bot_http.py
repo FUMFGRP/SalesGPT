@@ -63,6 +63,12 @@ def save_lead(session_id: str, session: dict):
         json.dump(leads, f, indent=2)
     sync_to_sheets(entry, is_new=existing is None)
 
+    # Trigger Retell call the first time a phone number is captured
+    phone = session.get("phone")
+    had_phone_before = existing and existing.get("phone")
+    if phone and not had_phone_before:
+        trigger_retell_call(phone, lead_name=session.get("name", ""))
+
 def sync_to_sheets(lead: dict, is_new: bool = True):
     """Append new lead row to Google Sheet via Apps Script webhook."""
     webhook = os.getenv("GOOGLE_SHEET_WEBHOOK")
@@ -95,33 +101,44 @@ def extract_lead_info(message: str, session: dict):
         session["name"] = name_match.group(1)
 
 # Config
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
+DEEPSEEK_URL = "https://api.deepseek.com/chat/completions"
+DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
+
+RETELL_API_KEY = os.getenv("RETELL_API_KEY")
+RETELL_AGENT_ID = os.getenv("RETELL_AGENT_ID")
+RETELL_FROM_NUMBER = os.getenv("RETELL_FROM_NUMBER")  # e.g. +15551234567
 
 CALCOM_API_KEY = os.getenv("CALCOM_API_KEY")
 CALCOM_API_URL = "https://api.cal.com/v1"
 calcom_booking_url: str = ""  # populated at startup
 
 def fetch_calcom_booking_url() -> str:
-    """Fetch the first active event type and return its public booking URL."""
+    """Return booking URL. Uses CALCOM_BOOKING_URL env var directly if set, otherwise fetches via API."""
+    # Direct override — most reliable
+    direct = os.getenv("CALCOM_BOOKING_URL", "").strip()
+    if direct:
+        logger.info(f"Cal.com booking URL from env: {direct}")
+        return direct
+
     if not CALCOM_API_KEY:
         return ""
     try:
         # Get profile (username)
         me = requests.get(f"{CALCOM_API_URL}/me?apiKey={CALCOM_API_KEY}", timeout=10)
+        logger.info(f"Cal.com /me status={me.status_code} body={me.text[:300]}")
         if me.status_code != 200:
-            logger.error(f"Cal.com /me error: {me.status_code} {me.text[:100]}")
             return ""
         username = me.json().get("user", {}).get("username", "")
 
         # Get event types
         et = requests.get(f"{CALCOM_API_URL}/event-types?apiKey={CALCOM_API_KEY}", timeout=10)
+        logger.info(f"Cal.com /event-types status={et.status_code} body={et.text[:300]}")
         if et.status_code != 200:
-            logger.error(f"Cal.com /event-types error: {et.status_code} {et.text[:100]}")
-            return ""
+            return f"https://cal.com/{username}" if username else ""
         event_types = et.json().get("event_types", [])
         if not event_types:
-            return f"https://cal.com/{username}"
+            return f"https://cal.com/{username}" if username else ""
         slug = event_types[0].get("slug", "")
         return f"https://cal.com/{username}/{slug}"
     except Exception as e:
@@ -145,25 +162,23 @@ What clients get: One AI-Team (Product Manager + Workflows + Specialists)
 Be warm, empathetic, and professional. When a customer seems ready to move forward or asks how to book, share the booking link."""
 
 def get_ai_response(message: str, history: List[dict]) -> str:
-    """Call OpenRouter API directly via HTTP"""
-    if not OPENROUTER_API_KEY:
-        return "⚠️ Bot not configured. Add OPENROUTER_API_KEY to environment variables."
-    
+    """Call DeepSeek API directly via HTTP"""
+    if not DEEPSEEK_API_KEY:
+        return "⚠️ Bot not configured. Add DEEPSEEK_API_KEY to environment variables."
+
     try:
         messages = [{"role": "system", "content": build_system_prompt()}]
         messages.extend(history[-10:])
         messages.append({"role": "user", "content": message})
-        
+
         response = requests.post(
-            OPENROUTER_URL,
+            DEEPSEEK_URL,
             headers={
-                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-                "Content-Type": "application/json",
-                "HTTP-Referer": "https://aurasky.cloud",
-                "X-Title": "Aura Sky Cloud Bot"
+                "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
+                "Content-Type": "application/json"
             },
             json={
-                "model": "openai/gpt-4",
+                "model": DEEPSEEK_MODEL,
                 "messages": messages,
                 "temperature": 0.7,
                 "max_tokens": 500
@@ -181,6 +196,40 @@ def get_ai_response(message: str, history: List[dict]) -> str:
     except Exception as e:
         logger.error(f"Error: {e}")
         return f"Sorry, error: {str(e)[:100]}"
+
+def trigger_retell_call(to_number: str, lead_name: str = "") -> bool:
+    """Initiate an outbound AI voice call via Retell when a phone number is captured."""
+    if not RETELL_API_KEY or not RETELL_AGENT_ID or not RETELL_FROM_NUMBER:
+        logger.warning("Retell not configured — skipping call (need RETELL_API_KEY, RETELL_AGENT_ID, RETELL_FROM_NUMBER)")
+        return False
+    try:
+        payload = {
+            "from_number": RETELL_FROM_NUMBER,
+            "to_number": to_number,
+            "agent_id": RETELL_AGENT_ID,
+            "retell_llm_dynamic_variables": {
+                "lead_name": lead_name or "there",
+            },
+        }
+        res = requests.post(
+            "https://api.retellai.com/v2/create-phone-call",
+            headers={
+                "Authorization": f"Bearer {RETELL_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json=payload,
+            timeout=15,
+        )
+        if res.status_code in (200, 201):
+            call_id = res.json().get("call_id", "")
+            logger.info(f"Retell call started: {call_id} → {to_number}")
+            return True
+        else:
+            logger.error(f"Retell error: {res.status_code} {res.text[:200]}")
+            return False
+    except Exception as e:
+        logger.error(f"Retell call exception: {e}")
+        return False
 
 def send_email(to: str, subject: str, body: str) -> bool:
     """Send email via Resend HTTP API"""
@@ -256,11 +305,11 @@ WEB_CHAT_HTML = '''<!DOCTYPE html>
                 const d = await r.json();
                 const statusEl = document.getElementById("status");
                 if (d.configured) {
-                    statusEl.textContent = "✅ Connected to OpenRouter";
+                    statusEl.textContent = "✅ Connected to DeepSeek";
                     statusEl.className = "status connected";
                     add("bot", "👋 Hello! I'm Aura from Aura Sky Cloud.\\n\\nIf dealing with IT systems frustrates you, I bring clarity to that conversation.\\n\\nWhat's your biggest tech headache right now?");
                 } else {
-                    statusEl.textContent = "❌ Not configured - Add OPENROUTER_API_KEY";
+                    statusEl.textContent = "❌ Not configured - Add DEEPSEEK_API_KEY";
                     statusEl.className = "status error";
                 }
             } catch(e) {
@@ -306,7 +355,7 @@ WEB_CHAT_HTML = '''<!DOCTYPE html>
 def root():
     return {
         "status": "online",
-        "configured": bool(OPENROUTER_API_KEY),
+        "configured": bool(DEEPSEEK_API_KEY),
         "service": "Aura Sky Cloud Bot",
         "version": "HTTP Edition",
         "calcom": calcom_booking_url or "not configured"
@@ -347,14 +396,24 @@ async def send_email_endpoint(request: Request):
     )
     return {"success": success}
 
+@app.post("/retell/webhook")
+async def retell_webhook(request: Request):
+    """Receive call event updates from Retell (call_started, call_ended, etc.)."""
+    data = await request.json()
+    event = data.get("event")
+    call_id = data.get("data", {}).get("call_id", "")
+    logger.info(f"Retell webhook: event={event} call_id={call_id}")
+    return {"ok": True}
+
 if __name__ == "__main__":
     import uvicorn
     print("=" * 50)
     print("🚀 Aura Sky Cloud Bot - HTTP Edition")
     print("=" * 50)
-    print(f"OpenRouter: {'✅' if OPENROUTER_API_KEY else '❌'}")
+    print(f"DeepSeek: {'✅' if DEEPSEEK_API_KEY else '❌'} (model: {DEEPSEEK_MODEL})")
     print(f"Resend: {'✅' if os.getenv('RESEND_API_KEY') else '❌'}")
     print(f"Cal.com: {'✅' if CALCOM_API_KEY else '❌'}")
+    print(f"Retell: {'✅' if RETELL_API_KEY and RETELL_AGENT_ID else '❌ (need RETELL_API_KEY + RETELL_AGENT_ID + RETELL_FROM_NUMBER)'}")
     print("=" * 50)
     print("🌐 Web Chat: http://localhost:8000/chat")
     print("=" * 50)
