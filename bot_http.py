@@ -50,7 +50,12 @@ def save_lead(session_id: str, session: dict):
         "name": session.get("name"),
         "email": session.get("email"),
         "phone": session.get("phone"),
+        "location": session.get("location"),
+        "industry": session.get("industry"),
         "interest": session.get("interest"),
+        "operational_problem": session.get("operational_problem"),
+        "current_tools": session.get("current_tools"),
+        "ideal_outcome": session.get("ideal_outcome"),
         "messages": len(session.get("history", [])),
         "last_seen": datetime.utcnow().isoformat(),
         "created_at": existing.get("created_at") if existing else datetime.utcnow().isoformat(),
@@ -91,25 +96,63 @@ def sync_to_sheets(lead: dict, is_new: bool = True):
             "name": lead.get("name") or "",
             "email": lead.get("email") or "",
             "phone": lead.get("phone") or "",
+            "location": lead.get("location") or "",
+            "industry": lead.get("industry") or "",
             "interest": lead.get("interest") or "",
+            "operational_problem": lead.get("operational_problem") or "",
+            "current_tools": lead.get("current_tools") or "",
+            "ideal_outcome": lead.get("ideal_outcome") or "",
             "messages": str(lead.get("messages", 0)),
         }, timeout=10)
     except Exception as e:
         logger.error(f"Sheets sync error: {e}")
 
 def extract_lead_info(message: str, session: dict):
-    """Extract name, email, phone from message and update session."""
+    """Extract name, email, phone, location, industry and discovery answers from message."""
     import re
+    msg_lower = message.lower()
+
     if re.search(r"[\w.+-]+@[\w-]+\.\w+", message):
         session["email"] = re.search(r"[\w.+-]+@[\w-]+\.\w+", message).group()
     if re.search(r"\+?[\d\s\-()]{7,15}", message):
         session["phone"] = re.search(r"\+?[\d\s\-()]{7,15}", message).group().strip()
-    for service in ["coaching", "retainer", "project", "essential", "professional"]:
-        if service in message.lower():
+
+    for service in ["coaching", "retainer", "project", "bud fund", "manufacturing", "retail chatbot", "fintech"]:
+        if service in msg_lower:
             session["interest"] = service
+
     name_match = re.search(r"(?:my name is|i am|i'm|this is)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)", message, re.IGNORECASE)
     if name_match and not session.get("name"):
         session["name"] = name_match.group(1)
+
+    # Location detection
+    if not session.get("location"):
+        if any(k in msg_lower for k in ["hong kong", "hk", "kowloon", "wan chai", "causeway"]):
+            session["location"] = "Hong Kong"
+        elif any(k in msg_lower for k in ["london", "uk", "europe", "ireland", "germany", "france", "spain", "italy", "netherlands"]):
+            session["location"] = "Europe"
+        elif any(k in msg_lower for k in ["usa", "us ", "united states", "america", "new york", "california", "texas"]):
+            session["location"] = "USA"
+
+    # Industry detection
+    if not session.get("industry"):
+        for ind in ["fintech", "retail", "manufacturing", "logistics", "hospitality", "healthcare", "education", "property", "f&b", "restaurant"]:
+            if ind in msg_lower:
+                session["industry"] = ind
+                break
+
+    # Discovery question answers — store first meaningful response per topic
+    if not session.get("operational_problem") and len(message) > 30:
+        if any(k in msg_lower for k in ["problem", "headache", "issue", "challenge", "struggle", "slow", "frustrat", "pain", "difficult"]):
+            session["operational_problem"] = message[:300]
+
+    if not session.get("current_tools") and len(message) > 10:
+        if any(k in msg_lower for k in ["use", "using", "tool", "software", "system", "platform", "excel", "sheets", "whatsapp", "email"]):
+            session["current_tools"] = message[:200]
+
+    if not session.get("ideal_outcome") and len(message) > 20:
+        if any(k in msg_lower for k in ["wish", "want", "ideal", "goal", "dream", "fix", "solve", "automat", "save time", "reduce"]):
+            session["ideal_outcome"] = message[:200]
 
 # Config
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
@@ -227,7 +270,21 @@ IDENTIFY THE CLIENT'S MARKET EARLY
 Ask naturally where they are based or what industry they are in. This helps you present the most relevant package and funding options.
 
 {booking_line}
-Be warm, empathetic, and professional. Ask good questions. Understand their pain before presenting solutions. When they are ready to move forward, share the booking link."""
+
+---
+
+DISCOVERY — HOW TO QUALIFY LEADS
+Do not pitch. Listen 80%, talk 20%. Ask these questions naturally across the conversation — not all at once:
+
+1. OPERATIONAL PROBLEM: "What's your biggest operational headache right now — the thing that slows you down every week?"
+2. TIME/MONEY LOSS: "Where do you feel you're losing the most time or money in your current processes?"
+3. CURRENT TOOLS: "What tools or systems are you using to manage that? How well are they working?"
+4. AI EXPERIENCE: "Have you looked into AI or automation before? What happened?"
+5. IDEAL OUTCOME: "If you could fix one thing in your business, what would it be?"
+
+After listening, say: "Based on what you've told me, I think there are a couple of areas where we could help — would you be open to a short call so I can show you exactly how we'd approach this?"
+
+Be warm, empathetic, and professional. Never lead with price. Always lead with their problem."""
 
 def get_ai_response(message: str, history: List[dict]) -> str:
     """Call DeepSeek API directly via HTTP"""
@@ -368,21 +425,25 @@ WEB_CHAT_HTML = '''<!DOCTYPE html>
         const sess = "web-" + Math.random().toString(36).substr(2, 9);
         
         async function check() {
+            const statusEl = document.getElementById("status");
             try {
-                const r = await fetch("/");
+                const controller = new AbortController();
+                const timeout = setTimeout(() => controller.abort(), 8000);
+                const r = await fetch("/", { signal: controller.signal });
+                clearTimeout(timeout);
+                if (!r.ok) throw new Error("Server returned " + r.status);
                 const d = await r.json();
-                const statusEl = document.getElementById("status");
                 if (d.configured) {
-                    statusEl.textContent = "✅ Connected to DeepSeek";
+                    statusEl.textContent = "✅ Aura is online";
                     statusEl.className = "status connected";
-                    add("bot", "👋 Hello! I'm Aura from Aura Sky Cloud.\\n\\nIf dealing with IT systems frustrates you, I bring clarity to that conversation.\\n\\nWhat's your biggest tech headache right now?");
+                    add("bot", "👋 Hello! I'm Aura from Aura Sky Cloud.\\n\\nIf dealing with IT systems frustrates you, I bring clarity to that conversation.\\n\\nWhat's your biggest challenge right now?");
                 } else {
-                    statusEl.textContent = "❌ Not configured - Add DEEPSEEK_API_KEY";
+                    statusEl.textContent = "❌ Not configured — contact support";
                     statusEl.className = "status error";
                 }
             } catch(e) {
-                document.getElementById("status").textContent = "❌ Error: " + e.message;
-                document.getElementById("status").className = "status error";
+                statusEl.textContent = "❌ Could not reach server — " + (e.name === "AbortError" ? "timed out, try refreshing" : e.message);
+                statusEl.className = "status error";
             }
         }
         
