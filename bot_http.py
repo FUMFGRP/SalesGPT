@@ -386,7 +386,7 @@ def send_email(to: str, subject: str, body: str) -> bool:
                 "Content-Type": "application/json"
             },
             json={
-                "from": "Aura Sky Cloud <info@aurasky.cloud>",
+                "from": "Aura Sky Cloud <info@mail.aurasky.cloud>",
                 "to": to,
                 "subject": subject,
                 "text": body
