@@ -472,7 +472,7 @@ WEB_CHAT_HTML = '''<!DOCTYPE html>
             html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
             html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
             // Newlines to breaks
-            html = html.replace(/\\n/g, "<br>").replace(/\n/g, "<br>");
+            html = html.replace(/\\n/g, "<br>").replace(/&#10;/g, "<br>");
             d.innerHTML = html;
             document.getElementById("messages").appendChild(d);
             document.getElementById("messages").scrollTop = 999999;
