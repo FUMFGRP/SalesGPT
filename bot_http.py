@@ -135,7 +135,7 @@ def extract_lead_info(message: str, session: dict):
     if not session.get("location"):
         if any(k in msg_lower for k in ["hong kong", "hk", "kowloon", "wan chai", "causeway"]):
             session["location"] = "Hong Kong"
-        elif any(k in msg_lower for k in ["london", "uk", "europe", "ireland", "germany", "france", "spain", "italy", "netherlands"]):
+        elif any(k in msg_lower for k in ["london", "uk", "europe", "ireland", "germany", "france", "spain", "italy", "netherlands", "finland", "sweden", "norway", "portugal", "danish", "denmark", "helsinki", "stockholm", "oslo", "madrid", "lisbon", "berlin", "hamburg", "munich", "barcelona"]):
             session["location"] = "Europe"
         elif any(k in msg_lower for k in ["usa", "us ", "united states", "america", "new york", "california", "texas"]):
             session["location"] = "USA"
@@ -274,6 +274,11 @@ Scope is always discussed in the first call. Start by understanding their proble
 
 IDENTIFY THE CLIENT'S MARKET EARLY
 Ask naturally where they are based or what industry they are in. This helps you present the most relevant package and funding options.
+
+---
+
+LANGUAGE
+Detect the language the client writes in and respond in that same language throughout the entire conversation. Supported languages: English, Finnish, Swedish, Norwegian, Spanish, Portuguese, German. If the client writes in Finnish, respond in Finnish. If Spanish, respond in Spanish — and so on. Always maintain the same warm, professional tone regardless of language. Business knowledge, pricing, and packages remain the same across all languages.
 
 {booking_line}
 
