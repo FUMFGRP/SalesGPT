@@ -68,11 +68,15 @@ def save_lead(session_id: str, session: dict):
         json.dump(leads, f, indent=2)
     sync_to_sheets(entry, is_new=existing is None)
 
-    # Trigger Retell call the first time a phone number is captured
+    # Trigger Retell call the first time a phone number is captured (US only until account verified)
     phone = session.get("phone")
     had_phone_before = existing and existing.get("phone")
     if phone and not had_phone_before:
-        trigger_retell_call(phone, lead_name=session.get("name", ""))
+        cleaned = phone.replace(" ", "").replace("-", "")
+        if cleaned.startswith("+1") or (cleaned.startswith("1") and len(cleaned) == 11):
+            trigger_retell_call(phone, lead_name=session.get("name", ""))
+        else:
+            logger.info(f"Retell: skipping non-US number {phone} — account not yet verified for international")
 
     # Send booking link email the first time an email is captured
     email = session.get("email")
