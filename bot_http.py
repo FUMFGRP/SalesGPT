@@ -456,10 +456,19 @@ WEB_CHAT_HTML = '''<!DOCTYPE html>
         function add(s, t) {
             const d = document.createElement("div");
             d.className = "message " + s;
-            // Escape HTML then convert URLs to clickable links
-            const escaped = t.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
-            const linked = escaped.replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" style="color:inherit;text-decoration:underline;">$1</a>');
-            d.innerHTML = linked.replace(/\\n/g, "<br>");
+            // Escape HTML
+            let html = t.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+            // Strip ** around URLs first, then linkify
+            html = html.replace(/\*\*(https?:\/\/[^\s*]+)\*\*/g, '$1');
+            html = html.replace(/\*(https?:\/\/[^\s*]+)\*/g, '$1');
+            // Linkify bare URLs
+            html = html.replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" style="color:inherit;text-decoration:underline;">$1</a>');
+            // Render **bold** and *italic*
+            html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+            html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+            // Newlines to breaks
+            html = html.replace(/\\n/g, "<br>").replace(/\n/g, "<br>");
+            d.innerHTML = html;
             document.getElementById("messages").appendChild(d);
             document.getElementById("messages").scrollTop = 999999;
         }
