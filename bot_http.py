@@ -84,11 +84,8 @@ def save_lead(session_id: str, session: dict):
     logger.info(f"Email check: email={email} had_before={bool(had_email_before)} booking_url={bool(calcom_booking_url)}")
     if email and not had_email_before and calcom_booking_url:
         name = session.get("name") or "there"
-        send_email(
-            to=email,
-            subject="Your booking link — Aura Sky Cloud",
-            body=f"Hi {name},\n\nThanks for chatting with us! Here's your link to book a call with the Aura Sky Cloud team:\n\n{calcom_booking_url}\n\nLooking forward to speaking with you.\n\nAura\nAura Sky Cloud"
-        )
+        subject, body = generate_booking_email(name, calcom_booking_url, session.get("history", []))
+        send_email(to=email, subject=subject, body=body)
 
 def sync_to_sheets(lead: dict, is_new: bool = True):
     """Sync lead to Google Sheet — upsert by session_id."""
@@ -371,6 +368,50 @@ def trigger_retell_call(to_number: str, lead_name: str = "") -> bool:
     except Exception as e:
         logger.error(f"Retell call exception: {e}")
         return False
+
+def generate_booking_email(name: str, booking_url: str, history: list) -> tuple:
+    """Use DeepSeek to write the booking email in the same language as the conversation."""
+    if not DEEPSEEK_API_KEY:
+        return "Your booking link — Aura Sky Cloud", f"Hi {name},\n\nHere is your booking link:\n\n{booking_url}\n\nAura\nAura Sky Cloud"
+    try:
+        recent = history[-6:] if len(history) >= 6 else history
+        convo_sample = "\n".join([f"{m['role'].upper()}: {m['content'][:200]}" for m in recent])
+        prompt = f"""Based on this conversation, write a short, warm booking confirmation email in the SAME LANGUAGE as the conversation.
+
+Conversation sample:
+{convo_sample}
+
+The email must:
+- Be in the exact same language as the conversation above
+- Address the person as {name}
+- Include the booking link: {booking_url}
+- Be signed by Aura from Aura Sky Cloud
+- Be short (3-4 sentences max)
+- Sound warm and professional
+
+Return ONLY two lines:
+SUBJECT: <subject line in the conversation language>
+BODY: <full email body in the conversation language>"""
+
+        res = requests.post(
+            DEEPSEEK_URL,
+            headers={"Authorization": f"Bearer {DEEPSEEK_API_KEY}", "Content-Type": "application/json"},
+            json={"model": DEEPSEEK_MODEL, "messages": [{"role": "user", "content": prompt}], "temperature": 0.5, "max_tokens": 300},
+            timeout=20
+        )
+        if res.status_code == 200:
+            text = res.json()["choices"][0]["message"]["content"].strip()
+            subject = "Your booking link — Aura Sky Cloud"
+            body = text
+            for line in text.split("\n"):
+                if line.startswith("SUBJECT:"):
+                    subject = line.replace("SUBJECT:", "").strip()
+                elif line.startswith("BODY:"):
+                    body = line.replace("BODY:", "").strip()
+            return subject, body
+    except Exception as e:
+        logger.error(f"generate_booking_email error: {e}")
+    return "Your booking link — Aura Sky Cloud", f"Hi {name},\n\nHere is your booking link:\n\n{booking_url}\n\nAura\nAura Sky Cloud"
 
 def send_email(to: str, subject: str, body: str) -> bool:
     """Send email via Resend HTTP API"""
