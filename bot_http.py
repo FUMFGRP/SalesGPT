@@ -77,6 +77,7 @@ def save_lead(session_id: str, session: dict):
     # Send booking link email the first time an email is captured
     email = session.get("email")
     had_email_before = existing and existing.get("email")
+    logger.info(f"Email check: email={email} had_before={bool(had_email_before)} booking_url={bool(calcom_booking_url)}")
     if email and not had_email_before and calcom_booking_url:
         name = session.get("name") or "there"
         send_email(
@@ -371,8 +372,8 @@ def send_email(to: str, subject: str, body: str) -> bool:
     """Send email via Resend HTTP API"""
     api_key = os.getenv("RESEND_API_KEY")
     if not api_key:
+        logger.error("Email: RESEND_API_KEY not set")
         return False
-    
     try:
         res = requests.post(
             "https://api.resend.com/emails",
@@ -385,9 +386,15 @@ def send_email(to: str, subject: str, body: str) -> bool:
                 "to": to,
                 "subject": subject,
                 "text": body
-            }
+            },
+            timeout=10
         )
-        return res.status_code == 200
+        if res.status_code == 200:
+            logger.info(f"Email sent to {to} — subject: {subject}")
+            return True
+        else:
+            logger.error(f"Email failed: {res.status_code} {res.text[:300]}")
+            return False
     except Exception as e:
         logger.error(f"Email error: {e}")
         return False
