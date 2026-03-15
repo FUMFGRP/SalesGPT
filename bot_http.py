@@ -453,7 +453,7 @@ WEB_CHAT_HTML = '''<!DOCTYPE html>
             // Escape HTML then convert URLs to clickable links
             const escaped = t.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
             const linked = escaped.replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" style="color:inherit;text-decoration:underline;">$1</a>');
-            d.innerHTML = linked.replace(/\n/g, "<br>");
+            d.innerHTML = linked.replace(/\\n/g, "<br>");
             document.getElementById("messages").appendChild(d);
             document.getElementById("messages").scrollTop = 999999;
         }
