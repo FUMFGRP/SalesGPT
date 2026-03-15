@@ -86,12 +86,13 @@ def save_lead(session_id: str, session: dict):
         )
 
 def sync_to_sheets(lead: dict, is_new: bool = True):
-    """Append new lead row to Google Sheet via Apps Script webhook."""
+    """Sync lead to Google Sheet — upsert by session_id."""
     webhook = os.getenv("GOOGLE_SHEET_WEBHOOK")
-    if not webhook or not is_new:
+    if not webhook:
         return
     try:
         requests.post(webhook, json={
+            "session_id": lead.get("session_id") or "",
             "date": lead.get("created_at", "")[:10],
             "name": lead.get("name") or "",
             "email": lead.get("email") or "",
@@ -124,6 +125,11 @@ def extract_lead_info(message: str, session: dict):
     name_match = re.search(r"(?:my name is|i am|i'm|this is)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)", message, re.IGNORECASE)
     if name_match and not session.get("name"):
         session["name"] = name_match.group(1)
+    # Also catch names typed directly e.g. "MIKE CHANG" or "Mike Chang" on their own
+    if not session.get("name"):
+        standalone = re.search(r"^([A-Z][A-Za-z]+\s+[A-Z][A-Za-z]+)$", message.strip())
+        if standalone:
+            session["name"] = standalone.group(1).title()
 
     # Location detection
     if not session.get("location"):
